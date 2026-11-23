@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#112b25">
+  <meta name="description" content="Explore o Heap Sort passo a passo, com árvore binária e vetor sincronizados em tempo real.">
+  <title>Heap Lab — Visualizador de Heap Sort</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="styles.css">
+  <script src="heap-engine.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <aside class="rail" aria-label="Identidade do laboratório">
+    <a class="brand" href="./" aria-label="Heap Lab, início"><svg viewBox="0 0 32 32" fill="none" aria-hidden="true"><path d="M16 8 7 23m9-15 9 15M7 23h18" stroke="currentColor" stroke-width="2"/><circle cx="16" cy="7" r="4"/><circle cx="6" cy="25" r="4"/><circle cx="26" cy="25" r="4"/></svg></a>
+    <div class="rail-divider"></div>
+    <span class="rail-item selected" title="Visualizador de heap"><svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span>
+    <span class="rail-caption">ESTRUTURAS<br>EM MOVIMENTO</span>
+    <span class="rail-bottom">HL<span>01</span></span>
+  </aside>
+
+  <div class="page">
+    <header class="topbar"><div><strong>Heap Lab</strong><span class="breadcrumb-divider">/</span><span>Laboratório de algoritmos</span></div><span class="local-badge"><span></span>Explore. Compare. Entenda.</span></header>
+    <main>
+      <section class="intro">
+        <div><div class="eyebrow"><span></span>VISUALIZADOR INTERATIVO</div><h1>Heap Sort, <span>nó em nó.</span></h1><p>Veja cada comparação ganhar forma. Uma árvore, um vetor, o mesmo algoritmo.</p></div>
+        <button class="button ghost help-button" id="help-button" aria-expanded="false" aria-controls="help-panel"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 0 1 5 .5c0 1.5-2.5 2-2.5 3.5m0 3h.01"/></svg>Como funciona</button>
+      </section>
+
+      <section id="help-panel" class="help-panel" hidden><h2>Da árvore à ordenação</h2><p><strong>1. Insira valores.</strong> Cada novo elemento entra no fim do vetor e sobe na árvore até respeitar a regra do heap.</p><p><strong>2. Acompanhe os ajustes.</strong> No max-heap, pais são maiores ou iguais aos filhos; no min-heap, menores ou iguais. As cores conectam os mesmos elementos nas duas visualizações.</p><p><strong>3. Ordene.</strong> A raiz troca com o último elemento do heap ativo. O heap diminui e se reorganiza, até ordenar todo o vetor. Max-heap produz ordem crescente; min-heap, decrescente.</p><p>Os índices começam em zero: pai = ⌊(i − 1) / 2⌋, filho esquerdo = 2i + 1, filho direito = 2i + 2.</p></section>
+
+      <section class="input-panel" aria-labelledby="input-heading">
+        <div class="input-label"><label id="input-heading" for="values-input">Dê novos valores ao seu heap</label><span>Um número ou vários. Você escolhe.</span></div>
+        <form id="values-form" novalidate><div class="input-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5-4 7 4 7m6-14 4 7-4 7M13 4l-2 16"/></svg><input id="values-input" type="text" inputmode="text" autocomplete="off" placeholder="Ex.: 42, 18, 65, 7" aria-describedby="input-hint input-error" maxlength="600"><kbd>Enter</kbd></div><button class="button primary" type="submit" id="insert-button"><span class="plus">+</span>Inserir valores</button></form>
+        <div class="input-bottom"><span id="input-hint">Separe por vírgula, espaço ou ponto e vírgula. Até 31 valores inteiros.</span><div><button class="text-button" id="random-button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h3c5 0 7 12 12 12h3M3 18h3c2 0 4-3 5-5m3-3c1-2 2-4 4-4h3m-3-3 3 3-3 3m0 6 3 3-3 3"/></svg>Exemplo aleatório</button><span class="small-divider"></span><button class="text-button muted" id="clear-button">Limpar</button></div></div>
+        <p id="input-error" class="error-message" role="alert" hidden></p>
+      </section>
+
+      <section class="workspace-toolbar" aria-label="Configuração do heap"><div class="view-title"><span class="live-dot"></span>Seu heap em tempo real<span id="element-count" class="count-badge">9 elementos</span></div><div class="heap-toggle" role="group" aria-label="Tipo de heap"><button id="max-button" class="active" aria-pressed="true">Max-heap</button><button id="min-button" aria-pressed="false">Min-heap</button></div></section>
+
+      <div class="workspace">
+        <section class="panel tree-panel" aria-labelledby="tree-heading"><div class="panel-heading"><div><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v4m-7 5v-5h14v5"/><rect x="9" y="2" width="6" height="5" rx="1.5"/><rect x="2" y="16" width="6" height="5" rx="1.5"/><rect x="16" y="16" width="6" height="5" rx="1.5"/></svg><h2 id="tree-heading">Árvore binária</h2></div><span class="panel-meta" id="tree-depth">4 níveis</span></div>
+          <div class="tree-canvas" id="tree-canvas"><svg class="tree-edges" id="tree-edges" aria-hidden="true"></svg><div id="tree-nodes" class="tree-nodes" role="list" aria-label="Nós da árvore"></div><div class="empty-state" id="empty-tree" hidden><svg viewBox="0 0 64 64" aria-hidden="true"><path d="M32 19v12M16 43V31h32v12"/><circle cx="32" cy="13" r="7"/><circle cx="16" cy="50" r="7"/><circle cx="48" cy="50" r="7"/></svg><strong>Uma árvore começa com um valor.</strong><span>Insira números acima para dar o primeiro passo.</span></div></div>
+          <div class="tree-footer"><span><span class="root-symbol"></span>Raiz <strong id="root-value">90</strong></span><span id="heap-rule">Pai ≥ filhos</span></div>
+        </section>
+
+        <div class="right-column"><section class="panel vector-panel" aria-labelledby="vector-heading"><div class="panel-heading"><div><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M9 6v12m7-12v12"/></svg><h2 id="vector-heading">Representação em vetor</h2></div><span class="panel-meta">índice → valor</span></div><div id="vector" class="vector" role="list" aria-label="Valores do vetor"></div><div id="empty-vector" class="empty-vector" hidden>Seu vetor aparecerá aqui.</div><div class="vector-description"><span class="connection-icon">↳</span><p>A mesma estrutura, outra perspectiva.<br>Cada posição corresponde a um nó da árvore.</p></div><div class="vector-stats"><div><span>Elementos</span><strong id="stat-size">9<span> / 31</span></strong></div><div><span>Comparações</span><strong id="stat-comparisons">0</strong></div><div><span>Trocas</span><strong id="stat-swaps">0</strong></div></div></section>
+
+        <section class="step-panel" aria-labelledby="step-heading"><div class="step-heading"><span class="step-icon" id="step-icon">✓</span><h2 id="step-heading">Tudo em seu lugar</h2><span id="step-counter">PRONTO</span></div><p id="step-description" aria-live="polite">O max-heap está pronto. Insira um valor e acompanhe os ajustes, ou inicie a ordenação.</p><div class="step-operation" id="step-operation"><span>REGRA DO HEAP</span><code id="step-formula">pai ≥ filhos</code></div></section></div>
+      </div>
+
+      <section class="playback-panel" aria-label="Controles da demonstração"><div class="playback-buttons"><button class="icon-button" id="restart-button" title="Reiniciar demonstração" aria-label="Reiniciar demonstração"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 10a8 8 0 1 1 1 7M4 4v6h6"/></svg></button><span class="control-divider"></span><button class="icon-button" id="previous-button" title="Passo anterior" aria-label="Passo anterior"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5v14m12-14-9 7 9 7V5Z"/></svg></button><button class="play-button" id="play-button" title="Reproduzir" aria-label="Reproduzir"><svg id="play-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 11 7-11 7V5Z"/></svg></button><button class="icon-button" id="next-button" title="Próximo passo" aria-label="Próximo passo"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 5v14M6 5l9 7-9 7V5Z"/></svg></button></div><div class="timeline-wrap"><div class="timeline-caption"><span id="timeline-label">Pronto para explorar</span><span id="timeline-count">0 / 0</span></div><input type="range" id="timeline" min="0" max="0" value="0" aria-label="Etapa da demonstração"></div><div class="speed-control"><label for="speed">Velocidade</label><select id="speed"><option value="1800">0,5×</option><option value="900" selected>1×</option><option value="450">2×</option><option value="225">4×</option></select></div><button class="button sort-button" id="sort-button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h6M4 12h10M4 18h14m1-14v10m-3-3 3 3 3-3"/></svg>Ordenar com Heap Sort</button></section>
+
+      <div class="legend-row"><div class="legend"><span><i class="legend-dot default"></i>No heap</span><span><i class="legend-dot compare"></i>Comparando</span><span><i class="legend-dot swap"></i>Trocando</span><span><i class="legend-dot sorted"></i>Ordenado</span></div><span class="sync-note"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h15m-3-3 3 3-3 3M20 16H5m3-3-3 3 3 3"/></svg>Árvore e vetor sempre sincronizados</span></div>
+
+      <section class="concepts" aria-label="Conceitos do algoritmo"><div><span class="concept-kicker">ESTRUTURA</span><h3>Uma árvore completa</h3><p>Os níveis são preenchidos da esquerda para a direita, sem deixar espaços.</p></div><div><span class="concept-kicker">PROPRIEDADE</span><h3 id="concept-property">O maior fica no topo</h3><p id="concept-description">No max-heap, cada pai é maior ou igual aos seus filhos. A raiz guarda o maior valor.</p></div><div><span class="concept-kicker">EFICIÊNCIA</span><h3>O(n log n)</h3><p>Ordenação no próprio vetor, com memória auxiliar O(1) no algoritmo.</p></div></section>
+      <footer><span class="footer-brand">Heap Lab<span>Aprender é visualizar.</span></span><span>Feito para explorar estruturas de dados.</span></footer>
+    </main>
+  </div>
+</body>
+</html>

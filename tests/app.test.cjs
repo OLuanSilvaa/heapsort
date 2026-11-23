@@ -64,9 +64,11 @@ class Element {
   getBoundingClientRect() { return { x: (Number(this.dataset.index || 0) % 6) * 55, y: Math.floor(Number(this.dataset.index || 0) / 6) * 65 }; }
   getAnimations() { return []; }
   animate() { return {}; }
+  contains(element) { return this === element || this.children.some(child => child.contains?.(element)); }
   fire(name, extras = {}) {
-    const event = { target: this, preventDefault() {}, ...extras };
+    const event = { target: this, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, stopPropagation() {}, ...extras };
     for (const handler of this.listeners[name] || []) handler(event);
+    return event;
   }
   click() { if (!this.disabled) this.fire('click'); }
 }
@@ -80,7 +82,9 @@ function createApp({ storage = new Map(), storageFailure = false } = {}) {
     createElement: tag => new Element(tag, document),
     createElementNS: (_, tag) => new Element(tag, document),
     createTextNode: text => ({ textContent: String(text), remove() {} }),
-    addEventListener() {}
+    listeners: {},
+    addEventListener(name, handler) { (this.listeners[name] ||= []).push(handler); },
+    fire(name, extras = {}) { for (const handler of this.listeners[name] || []) handler({ target: this, ...extras }); }
   };
   document.documentElement = new Element('html', document);
   const html = fs.readFileSync(path.join(__dirname, '../index.html'), 'utf8');
@@ -99,7 +103,11 @@ function createApp({ storage = new Map(), storageFailure = false } = {}) {
     getItem(key) { if (storageFailure) throw new Error('Storage unavailable'); return storage.get(key) ?? null; },
     setItem(key, value) { if (storageFailure) throw new Error('Storage unavailable'); storage.set(key, value); storageWrites.push(JSON.parse(value)); }
   };
-  const context = vm.createContext({ document, window: { matchMedia: () => ({ matches: false }), localStorage },
+  const window = { matchMedia: () => ({ matches: false }), localStorage, listeners: {},
+    addEventListener(name, handler) { (this.listeners[name] ||= []).push(handler); },
+    fire(name) { for (const handler of this.listeners[name] || []) handler(); }
+  };
+  const context = vm.createContext({ document, window,
     ResizeObserver: class { observe() {} }, setTimeout(fn) { const id = ++nextTimer; timers.set(id, fn); return id; }, clearTimeout(id) { timers.delete(id); } });
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../heap-engine.js'), 'utf8'), context);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '../app.js'), 'utf8'), context);
@@ -110,7 +118,11 @@ function createApp({ storage = new Map(), storageFailure = false } = {}) {
   const vector = () => $('vector').children.map(element => Number(element.dataset.value));
   const sync = () => assert.deepEqual($('tree-nodes').children.map(element => [element.dataset.index, element.dataset.value]), $('vector').children.map(element => [element.dataset.index, element.dataset.value]));
   const snapshot = () => JSON.parse(storage.get(STORAGE_KEY));
-  return { $, finish, tick, submit, vector, sync, context, timers, document, storage, storageWrites, snapshot };
+  return { $, finish, tick, submit, vector, sync, context, timers, document, window, storage, storageWrites, snapshot };
+}
+
+function dragTransfer() {
+  return { effectAllowed: 'uninitialized', dropEffect: 'none', data: new Map(), setData(type, value) { this.data.set(type, value); } };
 }
 
 test('app: insertion, playback, seeking, sorting and replay keep both views synchronized', () => {
@@ -325,4 +337,151 @@ test('app: unavailable or corrupted storage does not break editing', () => {
     assert.equal(vector()[0], 3);
     if (options.storageFailure) assert.equal($('storage-status').textContent, 'Salvamento indisponível');
   }
+});
+
+test('app: drag previews do not mutate or save; dropping immediately commits and persists a swap', () => {
+  const app = createApp();
+  const { $, vector, sync, snapshot, storageWrites, storage, timers } = app;
+  const before = snapshot();
+  const originalValues = vector();
+  const source = $('vector').children[0];
+  const target = $('vector').children[3];
+  const dataTransfer = dragTransfer();
+  const writeCount = storageWrites.length;
+  source.fire('dragstart', { dataTransfer });
+  assert.equal(dataTransfer.effectAllowed, 'move');
+  assert.equal(dataTransfer.data.get('text/plain'), before.entries[0].id);
+  assert.match(source.className, /drag-source/);
+  const over = target.fire('dragover', { dataTransfer });
+  assert.equal(over.defaultPrevented, true);
+  assert.equal(dataTransfer.dropEffect, 'move');
+  assert.match(target.className, /drop-target/);
+  assert.deepEqual(vector(), originalValues);
+  assert.deepEqual(snapshot(), before);
+  assert.equal(storageWrites.length, writeCount);
+  sync();
+  target.fire('dragleave', { relatedTarget: target.firstElementChild });
+  assert.match(target.className, /drop-target/, 'moving inside the cell must keep the destination highlighted');
+  target.fire('dragleave', { relatedTarget: null });
+  assert.doesNotMatch(target.className, /drop-target/);
+  target.fire('dragover', { dataTransfer });
+  target.fire('drop', { dataTransfer });
+  const swapped = [...originalValues];
+  [swapped[0], swapped[3]] = [swapped[3], swapped[0]];
+  assert.deepEqual(vector(), swapped, 'release must confirm immediately, without waiting for the next animation tick');
+  assert.deepEqual(snapshot().entries.map(entry => entry.value), swapped);
+  assert.equal(snapshot().cursor, 1);
+  assert.equal(snapshot().frames[1].title, 'Troca manual confirmada');
+  assert.equal(storageWrites.length, writeCount + 1);
+  assert.doesNotMatch(source.className, /drag-source/);
+  assert.doesNotMatch(target.className, /drop-target/);
+  source.fire('dragend');
+  assert.ok(timers.size > 0, 'native dragend must not stop the heap adjustment');
+  sync();
+  const restored = createApp({ storage });
+  assert.deepEqual(restored.vector(), swapped);
+  assert.equal(restored.snapshot().cursor, 1);
+  assert.equal(restored.timers.size, 0);
+  restored.$('play-button').click();
+  restored.finish();
+  const final = restored.vector();
+  for (let i = 1; i < final.length; i++) assert.ok(final[Math.floor((i - 1) / 2)] >= final[i]);
+  assert.deepEqual([...final].sort((a, b) => a - b), [...originalValues].sort((a, b) => a - b));
+  restored.sync();
+});
+
+test('app: canceled, outside, same-position and external drops leave the vector and storage unchanged', () => {
+  const { $, vector, snapshot, storageWrites, document, window, timers } = createApp();
+  const originalValues = vector();
+  const before = snapshot();
+  const writeCount = storageWrites.length;
+  const source = $('vector').children[0];
+  const target = $('vector').children[1];
+  const dataTransfer = dragTransfer();
+  const cancellations = [
+    () => source.fire('dragend'),
+    () => document.fire('drop'),
+    () => source.fire('drop', { dataTransfer }),
+    () => document.fire('keydown', { key: 'Escape', target: source }),
+    () => window.fire('blur')
+  ];
+  for (const cancel of cancellations) {
+    source.fire('dragstart', { dataTransfer });
+    target.fire('dragover', { dataTransfer });
+    cancel();
+    target.fire('drop', { dataTransfer });
+    assert.deepEqual(vector(), originalValues);
+    assert.deepEqual(snapshot(), before);
+    assert.equal(storageWrites.length, writeCount);
+    assert.equal(timers.size, 0);
+    assert.doesNotMatch($('vector').className, /dragging/);
+    assert.doesNotMatch(source.className, /drag-source/);
+    assert.doesNotMatch(target.className, /drop-target/);
+  }
+  const external = target.fire('dragover', { dataTransfer });
+  assert.equal(external.defaultPrevented, false);
+  target.fire('drop', { dataTransfer });
+  assert.deepEqual(snapshot(), before);
+});
+
+test('app: dragging freezes an active sort until release and then rebuilds from its visible values', () => {
+  const { $, tick, finish, vector, snapshot, storageWrites, timers, sync } = createApp();
+  $('sort-button').click();
+  for (let i = 0; i < 100 && snapshot().frames[snapshot().cursor].kind !== 'swap'; i++) tick();
+  const before = snapshot();
+  const visible = vector();
+  const writeCount = storageWrites.length;
+  const source = $('vector').children[2];
+  const target = $('vector').children[8];
+  const dataTransfer = dragTransfer();
+  source.fire('dragstart', { dataTransfer });
+  assert.equal(timers.size, 0);
+  for (let i = 0; i < 5; i++) target.fire('dragover', { dataTransfer });
+  tick();
+  assert.deepEqual(vector(), visible);
+  assert.deepEqual(snapshot(), before);
+  assert.equal(storageWrites.length, writeCount);
+  target.fire('drop', { dataTransfer });
+  [visible[2], visible[8]] = [visible[8], visible[2]];
+  assert.deepEqual(vector(), visible);
+  assert.deepEqual(snapshot().frames[0].entries, before.entries);
+  finish();
+  const final = vector();
+  for (let i = 1; i < final.length; i++) assert.ok(final[Math.floor((i - 1) / 2)] >= final[i]);
+  sync();
+});
+
+test('app: drag works with duplicates and min-heaps, and a singleton cannot be dragged', () => {
+  const { $, submit, finish, vector, snapshot, storageWrites, sync } = createApp();
+  $('clear-button').click();
+  submit('42 42 18');
+  finish();
+  const before = snapshot().entries;
+  let source = $('vector').children[0];
+  let target = $('vector').children[1];
+  source.fire('dragstart', { dataTransfer: dragTransfer() });
+  target.fire('drop', { dataTransfer: dragTransfer() });
+  assert.equal(snapshot().entries[0].id, before[1].id);
+  assert.equal(snapshot().entries[1].id, before[0].id);
+  assert.deepEqual(vector(), [42, 42, 18]);
+  finish();
+  $('min-button').click();
+  finish();
+  source = $('vector').children[0];
+  target = $('vector').children[2];
+  source.fire('dragstart', { dataTransfer: dragTransfer() });
+  target.fire('drop', { dataTransfer: dragTransfer() });
+  finish();
+  assert.equal(vector()[0], 18);
+  sync();
+  $('clear-button').click();
+  submit('7');
+  finish();
+  const writeCount = storageWrites.length;
+  source = $('vector').children[0];
+  assert.equal(source.draggable, false);
+  const start = source.fire('dragstart', { dataTransfer: dragTransfer() });
+  assert.equal(start.defaultPrevented, true);
+  assert.equal(storageWrites.length, writeCount);
+  assert.deepEqual(vector(), [7]);
 });

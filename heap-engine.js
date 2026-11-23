@@ -123,6 +123,24 @@
     return r.frames;
   }
 
+  function swapFrames(initial, sourceId, targetId, mode = 'max') {
+    const source = initial.findIndex(entry => entry.id === sourceId);
+    const target = initial.findIndex(entry => entry.id === targetId);
+    if (source < 0 || target < 0 || source === target) {
+      throw new Error('Arraste um valor sobre outra posição do vetor para trocar.');
+    }
+    const r = recorder(initial, mode);
+    const sourceValue = r.entries[source].value;
+    const targetValue = r.entries[target].value;
+    r.record('start', 'Antes da troca manual', `${sourceValue} está no índice ${source} e ${targetValue} está no índice ${target}. A troca é confirmada ao soltar.`, [source, target]);
+    r.swap(source, target);
+    r.record('swap', 'Troca manual confirmada', `${sourceValue} e ${targetValue} trocaram de posição. Agora vamos reajustar o ${mode}-heap.`, [source, target], r.entries.length, `vetor[${source}] ↔ vetor[${target}]`);
+    // Arbitrary swaps can affect separate branches, so rebuild bottom-up.
+    for (let i = Math.floor(r.entries.length / 2) - 1; i >= 0; i--) r.siftDown(i, r.entries.length);
+    r.record('done', 'Heap reajustado', `A troca manual foi aplicada e o ${mode}-heap foi reorganizado. A árvore e o vetor continuam sincronizados.`);
+    return r.frames;
+  }
+
   function sortFrames(initial, mode = 'max') {
     const r = recorder(initial, mode);
     r.record('start', 'Preparando o Heap Sort', `Primeiro garantimos a propriedade do ${mode}-heap. Depois retiramos a raiz, um elemento por vez.`);
@@ -144,5 +162,5 @@
     return true;
   }
 
-  root.HeapEngine = { LIMIT, parseValues, buildFrames, insertFrames, deleteFrames, sortFrames, isHeap };
+  root.HeapEngine = { LIMIT, parseValues, buildFrames, insertFrames, deleteFrames, swapFrames, sortFrames, isHeap };
 })(globalThis);

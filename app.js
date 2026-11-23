@@ -3,6 +3,7 @@
   const $ = id => document.getElementById(id);
   const engine = globalThis.HeapEngine;
   const STORAGE_KEY = 'heap-lab:state:v1';
+  const DRAG_HINT = 'Arraste um valor sobre outro para trocar. Ao soltar, a troca é confirmada e o heap se ajusta.';
   const initialValues = [90, 75, 80, 40, 60, 55, 65, 20, 35];
   let nextId = 0;
   const makeEntries = values => values.map(value => ({ id: `node-${nextId++}`, value }));
@@ -11,6 +12,8 @@
   let playing = false;
   let timer = null;
   let selectedId = null;
+  let draggedId = null;
+  let dropTargetId = null;
   let frames = [readyFrame(makeEntries(initialValues))];
   const treeElements = new Map();
   const vectorElements = new Map();
@@ -101,10 +104,10 @@
     schedule();
   }
 
-  function startOperation(newFrames) {
+  function startOperation(newFrames, startCursor = 0) {
     pause();
     frames = newFrames;
-    cursor = 0;
+    cursor = startCursor;
     selectedId = null;
     clearError();
     play();
@@ -123,9 +126,65 @@
   }
 
   function selectEntry(id) {
+    if (draggedId !== null) return;
     pause();
     selectedId = selectedId === id ? null : id;
     render();
+  }
+
+  function clearDrag() {
+    draggedId = null;
+    dropTargetId = null;
+    $('vector').classList.toggle('dragging', false);
+    for (const slot of vectorElements.values()) {
+      slot.classList.toggle('drag-source', false);
+      slot.classList.toggle('drop-target', false);
+    }
+    if ($('vector-drag-hint').textContent !== DRAG_HINT) $('vector-drag-hint').textContent = DRAG_HINT;
+  }
+
+  function setDropTarget(id) {
+    const targetId = id === draggedId ? null : id;
+    if (targetId === dropTargetId) return;
+    dropTargetId = targetId;
+    for (const [entryId, slot] of vectorElements) slot.classList.toggle('drop-target', entryId === dropTargetId);
+    const entries = currentFrame().entries;
+    const source = entries.findIndex(entry => entry.id === draggedId);
+    const target = entries.findIndex(entry => entry.id === dropTargetId);
+    $('vector-drag-hint').textContent = target >= 0 && source >= 0
+      ? `Solte para trocar ${entries[source].value} (índice ${source}) com ${entries[target].value} (índice ${target}).`
+      : 'Solte sobre outra posição do vetor para confirmar a troca. Esc cancela.';
+  }
+
+  function beginDrag(event, id) {
+    if (currentFrame().entries.length < 2 || !vectorElements.has(id)) {
+      event.preventDefault();
+      return;
+    }
+    clearDrag();
+    pause();
+    draggedId = id;
+    $('vector').classList.toggle('dragging', true);
+    vectorElements.get(id).classList.toggle('drag-source', true);
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('text/plain', id);
+    }
+    $('vector-drag-hint').textContent = 'Solte sobre outra posição do vetor para confirmar a troca. Esc cancela.';
+  }
+
+  function dropEntry(event, targetId) {
+    if (draggedId === null) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const sourceId = draggedId;
+    clearDrag();
+    if (sourceId === targetId) return;
+    const entries = currentFrame().entries;
+    if (!entries.some(entry => entry.id === sourceId) || !entries.some(entry => entry.id === targetId)) return;
+    // Frame 1 contains the confirmed swap: render and persist it immediately.
+    startOperation(engine.swapFrames(entries, sourceId, targetId, mode), 1);
+    $('play-button').focus();
   }
 
   function classification(index, frame) {
@@ -216,10 +275,26 @@
         slot.innerHTML = '<span class="vector-cell"></span><span class="vector-index"></span>';
         slot.addEventListener('click', () => selectEntry(entry.id));
         slot.addEventListener('keydown', event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); selectEntry(entry.id); } });
+        slot.addEventListener('dragstart', event => beginDrag(event, entry.id));
+        slot.addEventListener('dragover', event => {
+          if (draggedId === null) return;
+          setDropTarget(entry.id);
+          if (draggedId !== entry.id) {
+            event.preventDefault();
+            if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+          }
+        });
+        slot.addEventListener('dragleave', event => {
+          if (dropTargetId === entry.id && !slot.contains(event.relatedTarget)) setDropTarget(null);
+        });
+        slot.addEventListener('drop', event => dropEntry(event, entry.id));
+        slot.addEventListener('dragend', clearDrag);
         vectorElements.set(entry.id, slot);
       }
+      slot.draggable = n > 1;
       slot.dataset.index = index;
       slot.dataset.value = entry.value;
+      slot.title = `vetor[${index}] = ${entry.value}. Arraste sobre outro valor para trocar.`;
       slot.setAttribute('aria-label', `Índice ${index}, valor ${entry.value}${status}. Pressione Enter para selecionar e acessar a exclusão.`);
       const cell = slot.firstElementChild;
       cell.textContent = entry.value;
@@ -283,6 +358,7 @@
   }
 
   function render() {
+    clearDrag();
     const frame = currentFrame();
     renderVisuals();
     renderControls();
@@ -359,11 +435,17 @@
     $('help-panel').hidden = expanded;
   });
   document.addEventListener('keydown', event => {
+    if (draggedId !== null) {
+      if (event.key === 'Escape') clearDrag();
+      return;
+    }
     if (event.target.closest('input, select, textarea, button, a, [tabindex]')) return;
     if (event.code === 'Space' && frames.length > 1) { event.preventDefault(); playing ? pause() : play(); }
     if (event.key === 'ArrowRight' && cursor < frames.length - 1) { event.preventDefault(); pause(); cursor++; render(); }
     if (event.key === 'ArrowLeft' && cursor > 0) { event.preventDefault(); pause(); cursor--; render(); }
   });
+  document.addEventListener('drop', clearDrag);
+  window.addEventListener('blur', clearDrag);
   restoreState();
   new ResizeObserver(() => renderVisuals()).observe($('tree-canvas'));
   render();

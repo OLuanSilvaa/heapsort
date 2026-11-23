@@ -1,7 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 require('../heap-engine.js');
-const { parseValues, buildFrames, insertFrames, deleteFrames, sortFrames, isHeap } = globalThis.HeapEngine;
+const { parseValues, buildFrames, insertFrames, deleteFrames, swapFrames, sortFrames, isHeap } = globalThis.HeapEngine;
 const entries = values => values.map((value, id) => ({ value, id }));
 const values = frame => frame.entries.map(entry => entry.value);
 
@@ -93,5 +93,37 @@ for (const mode of ['max', 'min']) {
     }
     assert.throws(() => deleteFrames([], 'missing', mode));
     assert.throws(() => deleteFrames(entries([10]), 99, mode));
+  });
+
+  test(`${mode}: manual swaps preserve identities and rebuild the heap after confirmation`, () => {
+    const samples = [[8, 3], [5, 5, 5], [-5, 0, 3, -10, 2], Array.from({ length: 31 }, (_, i) => (i * 17) % 31 - 15)];
+    for (const sample of samples) {
+      const heap = buildFrames(entries(sample), mode).at(-1).entries;
+      for (const source of [heap, sortFrames(heap, mode).at(-1).entries]) {
+        const indices = source.length > 5 ? [0, 1, 7, 15, 30] : source.map((_, index) => index);
+        for (const from of indices) {
+          for (const to of indices) {
+            if (from === to) continue;
+            const before = JSON.stringify(source);
+            const frames = swapFrames(source, source[from].id, source[to].id, mode);
+            const swapped = source.map(entry => ({ ...entry }));
+            [swapped[from], swapped[to]] = [swapped[to], swapped[from]];
+            assert.deepEqual(frames[0].entries, source, 'history keeps the state before the user swap');
+            assert.equal(frames[1].kind, 'swap');
+            assert.deepEqual(frames[1].entries, swapped, 'the confirmed frame swaps only the two selected positions');
+            assert.ok(isHeap(frames.at(-1).entries, mode));
+            assert.equal(JSON.stringify(source), before, 'dragging must not mutate its source snapshot');
+            const byId = list => [...list].sort((a, b) => a.id - b.id);
+            for (const frame of frames) {
+              assert.deepEqual(byId(frame.entries), byId(source));
+              assert.ok(frame.active.every(index => index >= 0 && index < source.length));
+            }
+          }
+        }
+      }
+    }
+    assert.throws(() => swapFrames(entries([1, 2]), 0, 0, mode));
+    assert.throws(() => swapFrames(entries([1, 2]), 0, 99, mode));
+    assert.throws(() => swapFrames(entries([1, 2]), 99, 0, mode));
   });
 }

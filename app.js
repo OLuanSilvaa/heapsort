@@ -2,6 +2,7 @@
   'use strict';
   const $ = id => document.getElementById(id);
   const engine = globalThis.HeapEngine;
+  const STORAGE_KEY = 'heap-lab:state:v1';
   const initialValues = [90, 75, 80, 40, 60, 55, 65, 20, 35];
   let nextId = 0;
   const makeEntries = values => values.map(value => ({ id: `node-${nextId++}`, value }));
@@ -17,6 +18,61 @@
 
   function readyFrame(entries) {
     return { entries, kind: 'done', title: entries.length ? 'Tudo em seu lugar' : 'Vamos começar?', description: entries.length ? `O ${mode}-heap está pronto. Insira um valor e acompanhe os ajustes, ou inicie a ordenação.` : 'Insira seus primeiros valores no campo acima. A árvore e o vetor serão construídos juntos, passo a passo.', active: [], sortedFrom: entries.length, formula: mode === 'max' ? 'pai ≥ filhos' : 'pai ≤ filhos', comparisons: 0, swaps: 0 };
+  }
+
+  function validFrame(frame) {
+    if (!frame || !Array.isArray(frame.entries) || frame.entries.length > engine.LIMIT) return false;
+    const ids = new Set();
+    for (const entry of frame.entries) {
+      if (!entry || typeof entry.id !== 'string' || !/^node-\d+$/.test(entry.id) || !Number.isSafeInteger(Number(entry.id.slice(5))) || !Number.isSafeInteger(entry.value) || entry.value < -99999 || entry.value > 99999 || ids.has(entry.id)) return false;
+      ids.add(entry.id);
+    }
+    return ['start', 'insert', 'remove', 'compare', 'swap', 'done', 'sorted'].includes(frame.kind)
+      && ['title', 'description', 'formula'].every(key => typeof frame[key] === 'string')
+      && Array.isArray(frame.active) && frame.active.every(index => Number.isInteger(index) && index >= 0 && index < frame.entries.length)
+      && Number.isInteger(frame.sortedFrom) && frame.sortedFrom >= 0 && frame.sortedFrom <= frame.entries.length
+      && ['comparisons', 'swaps'].every(key => Number.isSafeInteger(frame[key]) && frame[key] >= 0);
+  }
+
+  function restoreState() {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(STORAGE_KEY));
+      if (!saved || saved.version !== 1 || !['max', 'min'].includes(saved.mode)
+        || !Array.isArray(saved.frames) || !saved.frames.length || saved.frames.length > 1000
+        || !Number.isInteger(saved.cursor) || saved.cursor < 0 || saved.cursor >= saved.frames.length
+        || !saved.frames.every(validFrame)) return;
+      let highestId = -1;
+      for (const frame of saved.frames) {
+        for (const entry of frame.entries) highestId = Math.max(highestId, Number(entry.id.slice(5)));
+      }
+      if (highestId >= Number.MAX_SAFE_INTEGER - engine.LIMIT) return;
+      mode = saved.mode;
+      frames = saved.frames;
+      cursor = saved.cursor;
+      nextId = Math.max(highestId + 1, Number.isSafeInteger(saved.nextId) && saved.nextId >= 0 && saved.nextId < Number.MAX_SAFE_INTEGER - engine.LIMIT ? saved.nextId : 0);
+      selectedId = currentFrame().entries.some(entry => entry.id === saved.selectedId) ? saved.selectedId : null;
+      if (['1800', '900', '450', '225'].includes(saved.speed)) $('speed').value = saved.speed;
+      // Restored demonstrations always wait for the user to resume playback.
+      playing = false;
+    } catch {
+      // Invalid or inaccessible browser storage must not prevent local use.
+    }
+  }
+
+  function saveState() {
+    try {
+      // Persist the visible frame on every step, including manual navigation.
+      // Keep its history too, so reloading can resume from this exact position.
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        version: 1, mode, entries: currentFrame().entries, frames, cursor, nextId,
+        selectedId, speed: $('speed').value
+      }));
+      $('storage-status').textContent = 'Salvo neste navegador';
+      $('storage-status').title = 'O estado é salvo a cada etapa. Ao recarregar, a demonstração retorna pausada nesta posição.';
+    } catch {
+      $('storage-status').textContent = 'Salvamento indisponível';
+      $('storage-status').title = 'Não foi possível acessar o localStorage. Verifique se o navegador permite o armazenamento deste site.';
+    }
   }
 
   function currentFrame() { return frames[cursor]; }
@@ -67,8 +123,9 @@
   }
 
   function selectEntry(id) {
+    pause();
     selectedId = selectedId === id ? null : id;
-    renderVisuals();
+    render();
   }
 
   function classification(index, frame) {
@@ -145,7 +202,7 @@
       circle.classList.toggle('long-value', String(entry.value).length > 3);
       node.lastElementChild.textContent = index;
       const status = index >= frame.sortedFrom ? ', posição ordenada' : '';
-      node.setAttribute('aria-label', `Índice ${index}, valor ${entry.value}${index === 0 ? ', raiz' : ''}${status}. Pressione Enter para destacar no vetor.`);
+      node.setAttribute('aria-label', `Índice ${index}, valor ${entry.value}${index === 0 ? ', raiz' : ''}${status}. Pressione Enter para selecionar e acessar a exclusão.`);
       node.title = `vetor[${index}] = ${entry.value}`;
       const treeAtIndex = $('tree-nodes').children[index];
       if (treeAtIndex !== node) $('tree-nodes').insertBefore(node, treeAtIndex || null);
@@ -163,7 +220,7 @@
       }
       slot.dataset.index = index;
       slot.dataset.value = entry.value;
-      slot.setAttribute('aria-label', `Índice ${index}, valor ${entry.value}${status}. Pressione Enter para destacar na árvore.`);
+      slot.setAttribute('aria-label', `Índice ${index}, valor ${entry.value}${status}. Pressione Enter para selecionar e acessar a exclusão.`);
       const cell = slot.firstElementChild;
       cell.textContent = entry.value;
       cell.className = ['vector-cell', String(entry.value).length > 3 ? 'long-value' : '', ...classes].join(' ');
@@ -195,7 +252,12 @@
   }
 
   function renderControls() {
-    const n = currentFrame().entries.length;
+    const entries = currentFrame().entries;
+    const n = entries.length;
+    const selectedIndex = entries.findIndex(entry => entry.id === selectedId);
+    $('selection-panel').hidden = selectedIndex < 0;
+    $('delete-button').disabled = selectedIndex < 0;
+    if (selectedIndex >= 0) $('selection-label').textContent = `Valor ${entries[selectedIndex].value} selecionado · índice ${selectedIndex}`;
     const inProgress = cursor < frames.length - 1;
     const hasHistory = frames.length > 1;
     $('previous-button').disabled = cursor === 0;
@@ -228,14 +290,15 @@
     $('step-description').textContent = frame.description;
     $('step-formula').textContent = frame.formula;
     $('step-counter').textContent = frames.length > 1 ? `ETAPA ${cursor + 1} / ${frames.length}` : 'PRONTO';
-    $('step-icon').textContent = ({ compare: '?', swap: '⇄', insert: '+', done: '✓', sorted: '✓', start: '·' })[frame.kind];
-    $('step-operation').firstElementChild.textContent = frame.kind === 'swap' ? 'TROCA DE POSIÇÕES' : frame.kind === 'compare' ? 'COMPARAÇÃO' : frame.kind === 'sorted' ? 'ORDEM FINAL' : 'REGRA DO HEAP';
+    $('step-icon').textContent = ({ compare: '?', swap: '⇄', insert: '+', remove: '−', done: '✓', sorted: '✓', start: '·' })[frame.kind];
+    $('step-operation').firstElementChild.textContent = frame.kind === 'swap' ? 'TROCA DE POSIÇÕES' : frame.kind === 'compare' ? 'COMPARAÇÃO' : frame.kind === 'remove' ? 'EXCLUSÃO' : frame.kind === 'sorted' ? 'ORDEM FINAL' : 'REGRA DO HEAP';
     $('max-button').classList.toggle('active', mode === 'max');
     $('min-button').classList.toggle('active', mode === 'min');
     $('max-button').setAttribute('aria-pressed', mode === 'max');
     $('min-button').setAttribute('aria-pressed', mode === 'min');
     $('concept-property').textContent = mode === 'max' ? 'O maior fica no topo' : 'O menor fica no topo';
     $('concept-description').textContent = `No ${mode}-heap, cada pai é ${mode === 'max' ? 'maior' : 'menor'} ou igual aos seus filhos. A raiz guarda o ${mode === 'max' ? 'maior' : 'menor'} valor.`;
+    saveState();
   }
 
   $('values-form').addEventListener('submit', event => {
@@ -251,6 +314,17 @@
   });
 
   $('values-input').addEventListener('input', clearError);
+  $('delete-button').addEventListener('click', () => {
+    if (!currentFrame().entries.some(entry => entry.id === selectedId)) return;
+    startOperation(engine.deleteFrames(currentFrame().entries, selectedId, mode));
+    $('play-button').focus();
+  });
+  $('deselect-button').addEventListener('click', () => {
+    const selectedNode = treeElements.get(selectedId);
+    selectedId = null;
+    render();
+    selectedNode?.focus();
+  });
   $('sort-button').addEventListener('click', () => startOperation(engine.sortFrames(currentFrame().entries, mode)));
   $('random-button').addEventListener('click', () => {
     const values = Array.from({ length: 10 }, () => Math.floor(Math.random() * 90) + 10);
@@ -278,7 +352,7 @@
   $('next-button').addEventListener('click', () => { pause(); cursor = Math.min(frames.length - 1, cursor + 1); render(); });
   $('restart-button').addEventListener('click', () => { pause(); cursor = 0; selectedId = null; render(); });
   $('timeline').addEventListener('input', event => { const target = Number(event.target.value); pause(); cursor = target; render(); });
-  $('speed').addEventListener('change', () => { renderControls(); if (playing) schedule(); });
+  $('speed').addEventListener('change', () => { renderControls(); saveState(); if (playing) schedule(); });
   $('help-button').addEventListener('click', () => {
     const expanded = $('help-button').getAttribute('aria-expanded') === 'true';
     $('help-button').setAttribute('aria-expanded', String(!expanded));
@@ -290,6 +364,7 @@
     if (event.key === 'ArrowRight' && cursor < frames.length - 1) { event.preventDefault(); pause(); cursor++; render(); }
     if (event.key === 'ArrowLeft' && cursor > 0) { event.preventDefault(); pause(); cursor--; render(); }
   });
+  restoreState();
   new ResizeObserver(() => renderVisuals()).observe($('tree-canvas'));
   render();
 })();

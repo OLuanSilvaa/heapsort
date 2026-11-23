@@ -21,7 +21,7 @@
   </aside>
 
   <div class="page">
-    <header class="topbar"><div><strong>Heap Lab</strong><span class="breadcrumb-divider">/</span><span>Laboratório de algoritmos</span></div><span class="local-badge"><span></span>Explore. Compare. Entenda.</span></header>
+    <header class="topbar"><div><strong>Heap Lab</strong><span class="breadcrumb-divider">/</span><span>Laboratório de algoritmos</span></div><span class="local-badge"><span></span><output id="storage-status">Salvamento automático</output></span></header>
     <main>
       <section class="intro">
         <div><div class="eyebrow"><span></span>VISUALIZADOR INTERATIVO</div><h1>Heap Sort, <span>nó em nó.</span></h1><p>Veja cada comparação ganhar forma. Uma árvore, um vetor, o mesmo algoritmo.</p></div>
@@ -38,6 +38,11 @@
       </section>
 
       <section class="workspace-toolbar" aria-label="Configuração do heap"><div class="view-title"><span class="live-dot"></span>Seu heap em tempo real<span id="element-count" class="count-badge">9 elementos</span></div><div class="heap-toggle" role="group" aria-label="Tipo de heap"><button id="max-button" class="active" aria-pressed="true">Max-heap</button><button id="min-button" aria-pressed="false">Min-heap</button></div></section>
+
+      <section id="selection-panel" class="selection-panel" aria-label="Elemento selecionado" hidden>
+        <div class="selection-details"><strong id="selection-label"></strong><span>A reprodução pausa ao selecionar. Exclua o valor e acompanhe o ajuste.</span></div>
+        <div class="selection-actions"><button class="button delete-button" id="delete-button" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/></svg>Excluir selecionado</button><button class="text-button" id="deselect-button" type="button">Cancelar seleção</button></div>
+      </section>
 
       <div class="workspace">
         <section class="panel tree-panel" aria-labelledby="tree-heading"><div class="panel-heading"><div><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 7v4m-7 5v-5h14v5"/><rect x="9" y="2" width="6" height="5" rx="1.5"/><rect x="2" y="16" width="6" height="5" rx="1.5"/><rect x="16" y="16" width="6" height="5" rx="1.5"/></svg><h2 id="tree-heading">Árvore binária</h2></div><span class="panel-meta" id="tree-depth">4 níveis</span></div>

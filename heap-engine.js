@@ -36,6 +36,19 @@
       frames.push({ entries: entries.map(entry => ({ ...entry })), kind, title, description, active: [...active], sortedFrom, formula, comparisons, swaps });
     }
     function swap(a, b) { [entries[a], entries[b]] = [entries[b], entries[a]]; }
+    function siftUp(start) {
+      let child = start;
+      while (child > 0) {
+        const parent = Math.floor((child - 1) / 2);
+        record('compare', 'Comparando com o pai', `O nó vale ${entries[child].value} e seu pai vale ${entries[parent].value}. Vamos verificar a regra do ${mode}-heap.`, [parent, child], entries.length, `${entries[parent].value} ${mode === 'min' ? '≤' : '≥'} ${entries[child].value} ?`);
+        if (!preferred(entries[child].value, entries[parent].value, mode)) break;
+        const value = entries[child].value;
+        swap(parent, child);
+        record('swap', 'O valor sobe', `${value} troca de posição com seu pai. O ajuste continua até a propriedade do heap ser respeitada.`, [parent, child], entries.length, `vetor[${parent}] ↔ vetor[${child}]`);
+        child = parent;
+      }
+      return child;
+    }
     function siftDown(start, size, sortedFrom = entries.length) {
       let parent = start;
       while (parent * 2 + 1 < size) {
@@ -56,7 +69,7 @@
         parent = best;
       }
     }
-    return { entries, frames, record, swap, siftDown };
+    return { entries, frames, record, swap, siftUp, siftDown };
   }
 
   function buildFrames(initial, mode = 'max') {
@@ -76,19 +89,37 @@
     }
     for (const addition of additions) {
       r.entries.push({ ...addition });
-      let child = r.entries.length - 1;
+      const child = r.entries.length - 1;
       r.record('insert', 'Um novo nó na árvore', `O valor ${addition.value} entra no índice ${child}, a próxima posição disponível na árvore completa.`, [child], r.entries.length, `vetor[${child}] = ${addition.value}`);
-      while (child > 0) {
-        const parent = Math.floor((child - 1) / 2);
-        r.record('compare', 'Comparando com o pai', `O novo nó vale ${r.entries[child].value} e seu pai vale ${r.entries[parent].value}. Vamos verificar a regra do ${mode}-heap.`, [parent, child], r.entries.length, `${r.entries[parent].value} ${mode === 'min' ? '≤' : '≥'} ${r.entries[child].value} ?`);
-        if (!preferred(r.entries[child].value, r.entries[parent].value, mode)) break;
-        const value = r.entries[child].value;
-        r.swap(parent, child);
-        r.record('swap', 'O novo valor sobe', `${value} troca de posição com seu pai. O ajuste continua até a propriedade do heap ser respeitada.`, [parent, child], r.entries.length, `vetor[${parent}] ↔ vetor[${child}]`);
-        child = parent;
-      }
+      r.siftUp(child);
     }
     r.record('done', 'Inserção concluída', `Todos os valores encontraram seu lugar. O ${mode}-heap está ajustado e as duas representações estão sincronizadas.`);
+    return r.frames;
+  }
+
+  function deleteFrames(initial, id, mode = 'max') {
+    const index = initial.findIndex(entry => entry.id === id);
+    if (index < 0) throw new Error('Selecione um elemento da árvore ou do vetor para excluir.');
+    const wasHeap = isHeap(initial, mode);
+    const r = recorder(initial, mode);
+    const value = r.entries[index].value;
+    const last = r.entries.length - 1;
+    r.record('start', 'Preparando a exclusão', `O valor ${value}, no índice ${index}, será excluído. Os demais elementos serão preservados.`, [index], r.entries.length, `excluir vetor[${index}]`);
+    if (index !== last) {
+      const replacement = r.entries[last].value;
+      r.swap(index, last);
+      r.record('swap', 'O último nó ocupa a posição', `${replacement} ocupa o índice ${index} e ${value} vai para o fim do vetor, de onde será removido.`, [index, last], r.entries.length, `vetor[${index}] ↔ vetor[${last}]`);
+    }
+    r.entries.pop();
+    r.record('remove', 'Valor excluído', `${value} foi removido. Agora vamos verificar o ajuste do ${mode}-heap.`, index < r.entries.length ? [index] : [], r.entries.length, `${r.entries.length} ${r.entries.length === 1 ? 'elemento restante' : 'elementos restantes'}`);
+    if (!wasHeap) {
+      // A paused sort can be edited too; rebuild its remaining active values.
+      for (let i = Math.floor(r.entries.length / 2) - 1; i >= 0; i--) r.siftDown(i, r.entries.length);
+    } else if (index < r.entries.length) {
+      const settledIndex = r.siftUp(index);
+      if (settledIndex === index) r.siftDown(index, r.entries.length);
+    }
+    r.record('done', 'Exclusão concluída', r.entries.length ? `O valor ${value} foi excluído e o ${mode}-heap foi ajustado. A árvore e o vetor continuam sincronizados.` : `O valor ${value} foi excluído. A árvore e o vetor estão vazios; insira novos valores para continuar.`);
     return r.frames;
   }
 
@@ -113,5 +144,5 @@
     return true;
   }
 
-  root.HeapEngine = { LIMIT, parseValues, buildFrames, insertFrames, sortFrames, isHeap };
+  root.HeapEngine = { LIMIT, parseValues, buildFrames, insertFrames, deleteFrames, sortFrames, isHeap };
 })(globalThis);

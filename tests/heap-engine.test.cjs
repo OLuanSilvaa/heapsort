@@ -1,7 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 require('../heap-engine.js');
-const { parseValues, buildFrames, insertFrames, sortFrames, isHeap } = globalThis.HeapEngine;
+const { parseValues, buildFrames, insertFrames, deleteFrames, sortFrames, isHeap } = globalThis.HeapEngine;
 const entries = values => values.map((value, id) => ({ value, id }));
 const values = frame => frame.entries.map(entry => entry.value);
 
@@ -63,5 +63,35 @@ for (const mode of ['max', 'min']) {
     const validSource = buildFrames(entries([4, 8, 2]), mode).at(-1).entries;
     const frames = insertFrames(validSource, [{ id: 3, value: 20 }], mode);
     assert.equal(frames[1].kind, 'insert', 'valid heap should insert immediately');
+  });
+
+  test(`${mode}: deletion removes the selected identity and repairs any tree position`, () => {
+    const samples = [[0], [5, 5, 5], [-5, 0, 3, -10, 2], [100, 50, 90, 20, 40, 80, 85, 10, 15, 35, 38, 70, 75, 82, 84], Array.from({ length: 31 }, (_, i) => (i * 17) % 31 - 15)];
+    if (mode === 'min') samples.push(samples[3].map(value => -value));
+    for (const sample of samples) {
+      const heap = buildFrames(entries(sample), mode).at(-1).entries;
+      const sort = sortFrames(heap, mode);
+      const sources = [heap, sort.at(-1).entries, sort.find(frame => frame.kind === 'swap')?.entries].filter(Boolean);
+      for (const source of sources) {
+        for (const removed of source) {
+          const before = JSON.stringify(source);
+          const frames = deleteFrames(source, removed.id, mode);
+          const final = frames.at(-1);
+          assert.ok(isHeap(final.entries, mode));
+          assert.equal(JSON.stringify(source), before);
+          const byId = list => [...list].sort((a, b) => a.id - b.id);
+          assert.deepEqual(byId(final.entries), byId(source.filter(entry => entry.id !== removed.id)));
+          const removal = frames.findIndex(frame => frame.kind === 'remove');
+          assert.ok(removal > 0);
+          assert.equal(frames[removal].entries.length, source.length - 1);
+          for (const frame of frames.slice(removal)) {
+            assert.ok(!frame.entries.some(entry => entry.id === removed.id));
+            assert.ok(frame.active.every(index => index >= 0 && index < frame.entries.length));
+          }
+        }
+      }
+    }
+    assert.throws(() => deleteFrames([], 'missing', mode));
+    assert.throws(() => deleteFrames(entries([10]), 99, mode));
   });
 }

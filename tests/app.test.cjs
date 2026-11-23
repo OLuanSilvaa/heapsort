@@ -485,3 +485,67 @@ test('app: drag works with duplicates and min-heaps, and a singleton cannot be d
   assert.equal(storageWrites.length, writeCount);
   assert.deepEqual(vector(), [7]);
 });
+
+test('app: worst-case example starts with every parent violating the selected heap rule and rebuilds it', () => {
+  for (const mode of ['max', 'min']) {
+    const { $, vector, finish, snapshot, sync, timers, storage } = createApp();
+    if (mode === 'min') { $('min-button').click(); finish(); }
+    $('sort-button').click();
+    assert.ok(timers.size > 0);
+    $('worst-case-button').click();
+    const before = vector();
+    assert.equal(before.length, 15);
+    assert.equal(timers.size, 1, 'the previous playback must be canceled');
+    assert.equal(snapshot().cursor, 0);
+    assert.deepEqual(snapshot().entries.map(entry => entry.value), before);
+    assert.equal($('stat-comparisons').textContent, '0');
+    assert.equal($('stat-swaps').textContent, '0');
+    for (let i = 1; i < before.length; i++) {
+      const parent = before[Math.floor((i - 1) / 2)];
+      assert.ok(mode === 'max' ? parent < before[i] : parent > before[i]);
+    }
+    sync();
+    finish();
+    const after = vector();
+    for (let i = 1; i < after.length; i++) {
+      const parent = after[Math.floor((i - 1) / 2)];
+      assert.ok(mode === 'max' ? parent >= after[i] : parent <= after[i]);
+    }
+    assert.deepEqual([...after].sort((a, b) => a - b), [...before].sort((a, b) => a - b));
+    assert.ok(Number($('stat-comparisons').textContent) > 0);
+    assert.ok(Number($('stat-swaps').textContent) > 0);
+    assert.deepEqual(createApp({ storage }).vector(), after);
+    sync();
+  }
+});
+
+test('app: best-case example immediately loads one saved value without comparisons or playback', () => {
+  for (const mode of ['max', 'min']) {
+    const { $, vector, finish, snapshot, sync, timers, storage, submit } = createApp();
+    if (mode === 'min') { $('min-button').click(); finish(); }
+    $('worst-case-button').click();
+    assert.ok(timers.size > 0);
+    $('tree-nodes').children[0].click();
+    assert.equal($('selection-panel').hidden, false);
+    $('play-button').click();
+    $('best-case-button').click();
+    assert.deepEqual(vector(), [42]);
+    assert.equal(timers.size, 0);
+    assert.equal(snapshot().mode, mode);
+    assert.deepEqual(snapshot().entries.map(entry => entry.value), [42]);
+    assert.equal(snapshot().cursor, 0);
+    assert.equal(snapshot().frames.length, 1);
+    assert.equal($('stat-comparisons').textContent, '0');
+    assert.equal($('stat-swaps').textContent, '0');
+    assert.equal($('play-button').disabled, true);
+    assert.equal($('sort-button').disabled, true);
+    assert.equal($('values-input').disabled, false);
+    assert.equal($('selection-panel').hidden, true);
+    assert.deepEqual(createApp({ storage }).vector(), [42]);
+    sync();
+    submit('0');
+    finish();
+    assert.equal(vector()[0], mode === 'max' ? 42 : 0);
+    sync();
+  }
+});

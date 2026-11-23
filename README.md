@@ -19,6 +19,8 @@ Abra `index.html` no navegador. O sistema funciona diretamente pelo arquivo, sem
 - O estado atual é salvo no `localStorage` **a cada etapa**, inclusive durante inserções, exclusões, comparações, trocas e navegação manual. Ao recarregar, a árvore e o vetor voltam à etapa salva, com a reprodução pausada. O histórico, o tipo de heap e a velocidade também são restaurados.
 - **Limpar** também salva o estado vazio. Se o navegador bloquear o armazenamento, o sistema continua funcionando e informa que o salvamento está indisponível.
 - **Exemplo aleatório** cria uma nova demonstração; **Limpar** inicia uma árvore vazia. Esses controles também cancelam a demonstração atual.
+- **Pior caso** carrega 15 valores em ordem contrária à regra do heap: crescente no max-heap ou decrescente no min-heap. Todos os pais começam violando a propriedade do heap, e a demonstração mostra a construção de baixo para cima. É um cenário didático de heap invertido.
+- **Melhor caso** carrega apenas o número 42, com zero comparações e zero trocas. Os dois cenários substituem a demonstração atual e são salvos imediatamente no navegador.
 - Novas inserções, mudança de tipo e ordenação ficam disponíveis ao concluir a demonstração. É possível avançar até a última etapa pela linha do tempo.
 
 ## Arquivos

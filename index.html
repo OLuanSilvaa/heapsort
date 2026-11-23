@@ -34,6 +34,11 @@
         <div class="input-label"><label id="input-heading" for="values-input">Dê novos valores ao seu heap</label><span>Um número ou vários. Você escolhe.</span></div>
         <form id="values-form" novalidate><div class="input-wrap"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5-4 7 4 7m6-14 4 7-4 7M13 4l-2 16"/></svg><input id="values-input" type="text" inputmode="text" autocomplete="off" placeholder="Ex.: 42, 18, 65, 7" aria-describedby="input-hint input-error" maxlength="600"><kbd>Enter</kbd></div><button class="button primary" type="submit" id="insert-button"><span class="plus">+</span>Inserir valores</button></form>
         <div class="input-bottom"><span id="input-hint">Separe por vírgula, espaço ou ponto e vírgula. Até 31 valores inteiros.</span><div><button class="text-button" id="random-button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h3c5 0 7 12 12 12h3M3 18h3c2 0 4-3 5-5m3-3c1-2 2-4 4-4h3m-3-3 3 3-3 3m0 6 3 3-3 3"/></svg>Exemplo aleatório</button><span class="small-divider"></span><button class="text-button muted" id="clear-button">Limpar</button></div></div>
+        <div class="case-examples" role="group" aria-label="Cenários prontos para explorar o heap">
+          <span>Cenários prontos</span>
+          <button class="button case-button worst-case" id="worst-case-button" type="button" title="Carregar 15 valores em ordem contrária à regra do heap">Pior caso <span>15 valores</span></button>
+          <button class="button case-button best-case" id="best-case-button" type="button" title="Carregar apenas um número, sem comparações ou trocas">Melhor caso <span>1 valor</span></button>
+        </div>
         <p id="input-error" class="error-message" role="alert" hidden></p>
       </section>
 

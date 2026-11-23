@@ -406,6 +406,25 @@
     const values = Array.from({ length: 10 }, () => Math.floor(Math.random() * 90) + 10);
     startOperation(engine.buildFrames(makeEntries(values), mode));
   });
+  $('worst-case-button').addEventListener('click', () => {
+    const values = Array.from({ length: 15 }, (_, index) => (mode === 'max' ? index + 1 : 15 - index) * 10);
+    const steps = engine.buildFrames(makeEntries(values), mode);
+    steps[0].title = 'Pior caso: ordem invertida';
+    steps[0].description = `Os 15 valores estão em ordem ${mode === 'max' ? 'crescente' : 'decrescente'}. Todos os pais violam a regra do ${mode}-heap. Acompanhe o ajuste de baixo para cima.`;
+    startOperation(steps);
+  });
+  $('best-case-button').addEventListener('click', () => {
+    pause();
+    frames = [{
+      ...readyFrame(makeEntries([42])),
+      title: 'Melhor caso: apenas um número',
+      description: 'Com apenas um elemento, a árvore e o vetor já estão ajustados. Nenhuma comparação ou troca é necessária.'
+    }];
+    cursor = 0;
+    selectedId = null;
+    clearError();
+    render();
+  });
   $('clear-button').addEventListener('click', () => {
     pause();
     frames = [readyFrame([])];
